@@ -91,36 +91,43 @@ std::ostream& operator<<(std::ostream& out, const Connection& c) {
 
 // STUDENT TODO: IMPLEMENT
 void Graph::updateNode(int id, NodeInfo n) {
-    if (true /* stub condition: change this to the correct condition*/) {
-        cout << "Attempting to update node with id: " << id << " but node does not exist" << endl;
+    if (id < 0 || id >= (int)nodes.size()) {
+	std::cerr << "Invalid node id: " << id << std::endl;
         return;
     }
+    if(nodes[id] != nullptr){
+        delete nodes[id];
+    }
 
-    return; //stub
+    nodes[id] = new NodeInfo(n);
 }
 
 // STUDENT TODO: IMPLEMENT
 NodeInfo* Graph::getNode(int id) const {
-    return nullptr; //stub
+    return nodes[id];
 }
 
 // STUDENT TODO: IMPLEMENT
 void Graph::updateConnection(int v, int u, double w) {
-    if (true /* stub condition: change this to the correct condition*/) {
+    if (v < 0 || v >= (int)nodes.size() || nodes[v] == nullptr) {
         cerr << "Attempting to update connection between " << v << " and " << u << " with weight " << w << " but " << v << " does not exist" << endl;
         exit(1);
     }
-    if (true /* stub condition: change this to the correct condition*/) {
+    if (u < 0 || u >= (int)nodes.size() || nodes[u] == nullptr){
         cerr << "Attempting to update connection between " << v << " and " << u << " with weight " << w << " but " << u << " does not exist" << endl;
         exit(1);
     }
     
-    return; //stub
+    adjacencyList[v][u] = Connection(v, u, w);
 }
 
 // STUDENT TODO: IMPLEMENT
 void Graph::clear() {
-    return; //stub
+    for(auto node : nodes){
+	delete node;
+    }
+    nodes.clear();
+    adjacencyList.clear();
 }
 
 
@@ -196,12 +203,18 @@ ostream& operator<<(ostream& out, const Graph& g) {
 }
 
 void Graph::resize(int size) {
-    this->size = size;
-    adjacencyList.resize(size);
-    for (int i = 0; i < size; i++) {
-        nodes.push_back(nullptr);
+    for(NodeInfo* node : nodes){
+	delete node;
     }
+    
+    nodes.clear();
+    nodes.resize(size, nullptr);
+    adjacencyList.clear();
+    adjacencyList.resize(size);
+
+    this->size = size;
 }
+
 
 vector<NodeInfo*> Graph::getNodes() const {
     return nodes;

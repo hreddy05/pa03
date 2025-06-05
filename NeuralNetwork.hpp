@@ -59,7 +59,7 @@ class NeuralNetwork : public Graph {
     private:
 
         // TODO: given the neural nets prediction and the ground truth label, it accumulates gradients for weights and biases. 
-        // each contribution is accumulated in a variable called delta, which resides in every node (for the bias) and every connection (for the weight)
+       	// each contribution is accumulated in a variable called delta, which resides in every node (for the bias) and every connection (for the weight)
         bool contribute(double y, double p);
         // a helper function to contribute. 
         double contribute(int nodeId, const double& y, const double& p);

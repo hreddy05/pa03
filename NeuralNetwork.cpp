@@ -1,5 +1,9 @@
 // includes
 #include "NeuralNetwork.hpp"
+#include <unordered_map>
+#include <unordered_set>
+#include <queue>
+#include <iostream>
 using namespace std;
 
 
@@ -8,37 +12,37 @@ using namespace std;
 
 // STUDENT TODO: IMPLEMENT
 void NeuralNetwork::eval() {
-    //stub
+    evaluating = true;
 }
 
 // STUDENT TODO: IMPLEMENT
 void NeuralNetwork::train() {
-    //stub
+    evaluating = false;
 }
 
 // STUDENT TODO: IMPLEMENT
 void NeuralNetwork::setLearningRate(double lr) {
-    //stub
+    learningRate = lr;
 }
 
 // STUDENT TODO: IMPLEMENT
 void NeuralNetwork::setInputNodeIds(std::vector<int> inputNodeIds) {
-    //stub
+   this->inputNodeIds = inputNodeIds;
 }
 
 // STUDENT TODO: IMPLEMENT
 void NeuralNetwork::setOutputNodeIds(std::vector<int> outputNodeIds) {
-    //stub
+    this->outputNodeIds = outputNodeIds;
 }
 
 // STUDENT TODO: IMPLEMENT
 vector<int> NeuralNetwork::getInputNodeIds() const {
-    return vector<int>(); //stub
+    return inputNodeIds;
 }
 
 // STUDENT TODO: IMPLEMENT
 vector<int> NeuralNetwork::getOutputNodeIds() const {
-    return vector<int>(); //stub
+    return outputNodeIds; //stub
 }
 
 // STUDENT TODO: IMPLEMENT
@@ -58,30 +62,67 @@ vector<double> NeuralNetwork::predict(DataInstance instance) {
 
     // 1. Set up your queue initialization
     // 2. Start visiting nodes using the queue
+    queue<int> q;
+    unordered_set<int> visited;
+    unordered_map<int, int> inDegree;
+    for (int v = 0; v < (int)adjacencyList.size(); ++v) {
+        for (const auto& [u, conn] : adjacencyList[v]) {
+            inDegree[u]++;
+        }
+    }
+
+    // Initialize inputs
+    for (size_t i = 0; i < inputNodeIds.size(); ++i) {
+        int id = inputNodeIds[i];
+        NodeInfo* node = getNode(id);
+        if (node == nullptr) {
+            cerr << "Error: input node ID " << id << " is nullptr!" << endl;
+            exit(1);
+        }
+        node->preActivationValue = input[i];
+        visited.insert(id);
+        q.push(id);
+    }
+
+    // Breadth-first traversal
+    while (!q.empty()) {
+        int vId = q.front(); q.pop();
+        visitPredictNode(vId);
+
+        for (const auto& [u, conn] : adjacencyList[vId]) {
+            visitPredictNeighbor(conn);
+            inDegree[u]--;
+            if (inDegree[u] == 0 && visited.count(u) == 0) {
+                visited.insert(u);
+                q.push(u);
+            }
+        }
+    }
 
     vector<double> output;
     for (int i = 0; i < outputNodeIds.size(); i++) {
         int dest = outputNodeIds.at(i);
-        NodeInfo* outputNode = nodes.at(dest);
+        NodeInfo* outputNode = getNode(dest);
+        if (outputNode == nullptr) {
+            cerr << "Error: output node ID " << dest << " is nullptr!" << endl;
+            exit(1);
+        }
         output.push_back(outputNode->postActivationValue);
     }
 
     if (evaluating) {
         flush();
     } else {
-        // increment batch size
         batchSize++;
-        // accumulate derivatives. If in training mode, weights and biases get accumulated
         contribute(instance.y, output.at(0));
     }
+
     return output;
 }
 // STUDENT TODO: IMPLEMENT
 bool NeuralNetwork::contribute(double y, double p) {
 
-    double incomingContribution = 0;
-    double outgoingContribution = 0;
-    NodeInfo* currNode = nullptr;
+    contributions.clear();
 
     // find each incoming contribution, and contribute to the input layer's outgoing weights
     // If the node is already found, use its precomputed contribution from the contributions map
@@ -90,26 +131,44 @@ bool NeuralNetwork::contribute(double y, double p) {
 
     flush();
 
+    for(int id : outputNodeIds){
+	contribute(id, y, p);
+    }
+
     return true;
 }
 // STUDENT TODO: IMPLEMENT
 double NeuralNetwork::contribute(int nodeId, const double& y, const double& p) {
+    if (contributions.find(nodeId) != contributions.end()) {
+        return contributions[nodeId];
+    }
 
-    double incomingContribution = 0;
     double outgoingContribution = 0;
-    NodeInfo* currNode = nodes.at(nodeId);
-
-    // find each incoming contribution, and contribute to the nodes outgoing weights
-    // If the node is already found, use its precomputed contribution from the contributions map
 
     if (adjacencyList.at(nodeId).empty()) {
-        // base case, we are at the end
-        outgoingContribution = -1 * ((y - p) / (p * (1 - p)));
-    } 
+        // Output node: use BCE derivative
+        outgoingContribution = -1.0 * ((y - p) / (p * (1 - p)));
+    } else {
+        for (int src = 0; src < adjacencyList.size(); ++src) {
+            auto it = adjacencyList[src].find(nodeId);
+            if (it != adjacencyList[src].end()) {
+                Connection& conn = it->second;
+                double incoming = contribute(src, y, p);
+                visitContributeNeighbor(conn, incoming, outgoingContribution);
+            }
+        }
+    }
 
-    // Now contribute to yourself and prepare the outgoing contribution
+    visitContributeNode(nodeId, outgoingContribution);
+    contributions[nodeId] = outgoingContribution;
 
     return outgoingContribution;
+
+ 
+
+    // find each incoming contribution, and contribute to the nodes outgoing weights
+    // If the node is already found, use its precomputed contribution from the contributions map 
+    
 }
 // STUDENT TODO: IMPLEMENT
 bool NeuralNetwork::update() {
@@ -124,7 +183,27 @@ bool NeuralNetwork::update() {
     // weight update: weight = weight - (learningRate * delta)
     // reset the delta term for each node and connection to zero.
     
-    flush();
+    if (batchSize == 0) return false; // prevent divide by zero
+
+    double scale = learningRate / batchSize;
+
+    // Update all node biases and reset delta
+    for (NodeInfo* node : nodes) {
+        if (node != nullptr) {
+            node->bias -= scale * node->delta;
+            node->delta = 0.0; // Reset delta
+        }
+    }
+
+    // Update all connection weights and reset delta
+    for (auto& connMap : adjacencyList) {
+        for (auto& [dest, conn] : connMap) {
+            conn.weight -= scale * conn.delta;
+            conn.delta = 0.0; // Reset delta
+        }
+    }
+
+    batchSize = 0; // Reset batch size
     return true;
     
 }

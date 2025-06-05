@@ -11,7 +11,6 @@ int main(int argc, char* argv[]) {
     // once you get the basic setters and getters and graph methods complete, you should be able
     // to play around with this file and explore the neural net. 
     // diabetes1.init contains a pretrained model. 
-    
     testTrain("./models/diabetes.init", "./data/diabetes_train.csv", "./data/diabetes_test.csv");
 
     return 0;
